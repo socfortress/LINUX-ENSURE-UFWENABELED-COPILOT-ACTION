@@ -4,7 +4,7 @@ This repository contains a script to check the status of UFW (Uncomplicated Fire
 
 ## Overview
 
-The `CheckFirewallStatus.sh` script checks the current status of UFW firewall including whether it's enabled and if logging is active. The script provides standardized logging and JSON output suitable for integration with security orchestration platforms, SIEM systems, and incident response workflows.
+The `Ensure-ufw-isEnabled.sh` script checks the current status of UFW firewall including whether it's enabled and if logging is active. The script provides standardized logging and JSON output suitable for integration with security orchestration platforms, SIEM systems, and incident response workflows.
 
 ## Script Structure
 
@@ -20,7 +20,7 @@ The `CheckFirewallStatus.sh` script checks the current status of UFW firewall in
 ### Command Line Execution
 
 ```bash
-./CheckFirewallStatus.sh
+./Ensure-ufw-isEnabled.sh
 
 ### Environment Variables
 
@@ -162,7 +162,7 @@ The script outputs standardized JSON responses to the active response log:
 Enable verbose logging by setting VERBOSE=1:
 
 ```bash
-VERBOSE=1 ./CheckFirewallStatus.sh
+VERBOSE=1 ./Ensure-ufw-isEnabled.sh
 ```
 
 ## License
