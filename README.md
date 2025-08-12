@@ -1,6 +1,3 @@
-Here's the adapted `.md` file for your script, with all the content combined in a single response:
-
-```markdown
 # Firewall Status Check Active Response Script
 
 This repository contains a script to check the status of UFW (Uncomplicated Firewall) on Linux systems as part of security automation and active response workflows.
@@ -24,7 +21,6 @@ The `CheckFirewallStatus.sh` script checks the current status of UFW firewall in
 
 ```bash
 ./CheckFirewallStatus.sh
-```
 
 ### Environment Variables
 
