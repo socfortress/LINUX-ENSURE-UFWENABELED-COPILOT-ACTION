@@ -19,7 +19,6 @@ The `Ensure-ufw-isEnabled.sh` script checks the current status of UFW firewall i
 
 ### Command Line Execution
 
-```bash
 ./Ensure-ufw-isEnabled.sh
 
 ### Environment Variables
