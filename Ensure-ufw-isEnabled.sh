@@ -1,20 +1,13 @@
 #!/bin/sh
 set -eu
 
-# ==============================
-# CONFIGURATION
-# ==============================
-ScriptName="SCRIPT_NAME_HERE"
-LogPath="/tmp/${ScriptName}-script.log"
+LogPath="/tmp/CheckFirewallStatus-script.log"
 ARLog="/var/ossec/active-response/active-responses.log"
 LogMaxKB=100
 LogKeep=5
 HostName="$(hostname)"
 runStart=$(date +%s)
 
-# ==============================
-# LOGGING FUNCTIONS
-# ==============================
 WriteLog() {
   Message="$1"; Level="${2:-INFO}"
   ts="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -40,14 +33,6 @@ RotateLog() {
   mv -f "$LogPath" "$LogPath.1"
 }
 
-# Escape text for safe JSON
-escape_json() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
-
-# ==============================
-# PRE-RUN SETUP
-# ==============================
 RotateLog
 
 if ! rm -f "$ARLog" 2>/dev/null; then
@@ -57,33 +42,43 @@ else
   WriteLog "Active response log cleared for fresh run." INFO
 fi
 
-WriteLog "=== SCRIPT START : $ScriptName ==="
+WriteLog "=== SCRIPT START : Check Firewall Status ==="
 
-# ==============================
-# MAIN SCRIPT LOGIC
-# ==============================
-# REPLACE THE BLOCK BELOW WITH YOUR SPECIFIC LOGIC
-# Must produce JSON payload and assign it to $final_json
+CheckFirewallStatus() {
+  # Default values
+  enabled=false
+  logging=false
 
-# Example dummy JSON payload
-payload='{"example_key":"example_value"}'
+  if ! command -v ufw >/dev/null 2>&1; then
+    WriteLog "UFW is not installed on this system." ERROR
+    printf '{"profile":"ufw","enabled":false,"logging":false,"error":"ufw not installed"}'
+    return
+  fi
+
+  status=$(ufw status verbose 2>/dev/null || true)
+
+  case "$status" in
+    *inactive*) enabled=false ;;
+    *active*)   enabled=true ;;
+  esac
+
+  if echo "$status" | grep -qi "Logging: on"; then
+    logging=true
+  fi
+  printf '{"profile":"ufw","enabled":%s,"logging":%s}' "$enabled" "$logging"
+}
+
+profile_json=$(CheckFirewallStatus)
 
 ts=$(date --iso-8601=seconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')
-final_json="{\"timestamp\":\"$ts\",\"host\":\"$HostName\",\"action\":\"$ScriptName\",\"data\":$payload,\"copilot_soar\":true}"
+final_json="{\"timestamp\":\"$ts\",\"host\":\"$HostName\",\"action\":\"check_firewall_status\",\"enforced\":[$profile_json],\"copilot_soar\":true}"
 
-# ==============================
-# WRITE JSON OUTPUT
-# ==============================
 tmpfile=$(mktemp)
 printf '%s\n' "$final_json" > "$tmpfile"
 if ! mv -f "$tmpfile" "$ARLog" 2>/dev/null; then
   mv -f "$tmpfile" "$ARLog.new"
 fi
 
-WriteLog "JSON result written to $ARLog" INFO
-
-# ==============================
-# SCRIPT END
-# ==============================
+WriteLog "Firewall status JSON written to $ARLog" INFO
 dur=$(( $(date +%s) - runStart ))
 WriteLog "=== SCRIPT END : duration ${dur}s ==="
