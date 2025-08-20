@@ -71,7 +71,7 @@ CheckFirewallStatus() {
 profile_json=$(CheckFirewallStatus)
 
 ts=$(date --iso-8601=seconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')
-final_json="{\"timestamp\":\"$ts\",\"host\":\"$HostName\",\"action\":\"check_firewall_status\",\"enforced\":[$profile_json],\"copilot_soar\":true}"
+final_json="{\"timestamp\":\"$ts\",\"host\":\"$HostName\",\"action\":\"check_firewall_status\",\"enforced\":[$profile_json],\"copilot_action\":true}"
 
 tmpfile=$(mktemp)
 printf '%s\n' "$final_json" > "$tmpfile"
