@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
-LogPath="/tmp/CheckFirewallStatus-script.log"
-ARLog="/var/ossec/active-response/active-responses.log"
+ScriptName="Check-Firewall-Status"
+LogPath="/tmp/${ScriptName}-script.log"
+ARLog="/var/ossec/logs/active-responses.log"
 LogMaxKB=100
 LogKeep=5
 HostName="$(hostname)"
@@ -33,52 +34,70 @@ RotateLog() {
   mv -f "$LogPath" "$LogPath.1"
 }
 
-RotateLog
+iso_now() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+escape_json() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
-if ! rm -f "$ARLog" 2>/dev/null; then
-  WriteLog "Failed to clear $ARLog (might be locked)" WARN
-else
-  : > "$ARLog"
-  WriteLog "Active response log cleared for fresh run." INFO
-fi
+BeginNDJSON(){ TMP_AR="$(mktemp)"; }
+AddRecord(){
+  ts="$(iso_now)"; profile="$1"; enabled="$2"; logging="$3"
+  printf '{"timestamp":"%s","host":"%s","action":"%s","copilot_action":true,"profile":"%s","enabled":%s,"logging":%s}\n' \
+    "$ts" "$HostName" "$ScriptName" "$(escape_json "$profile")" "$enabled" "$logging" >> "$TMP_AR"
+}
+AddStatus(){
+  ts="$(iso_now)"; st="${1:-info}"; msg="$(escape_json "${2:-}")"
+  printf '{"timestamp":"%s","host":"%s","action":"%s","copilot_action":true,"status":"%s","message":"%s"}\n' \
+    "$ts" "$HostName" "$ScriptName" "$st" "$msg" >> "$TMP_AR"
+}
 
-WriteLog "=== SCRIPT START : Check Firewall Status ==="
-
-CheckFirewallStatus() {
-  # Default values
-  enabled=false
-  logging=false
-
-  if ! command -v ufw >/dev/null 2>&1; then
-    WriteLog "UFW is not installed on this system." ERROR
-    printf '{"profile":"ufw","enabled":false,"logging":false,"error":"ufw not installed"}'
-    return
+CommitNDJSON(){
+  [ -s "$TMP_AR" ] || AddStatus "no_results" "no firewall profiles detected"
+  AR_DIR="$(dirname "$ARLog")"
+  [ -d "$AR_DIR" ] || WriteLog "Directory missing: $AR_DIR (will attempt write anyway)" WARN
+  if mv -f "$TMP_AR" "$ARLog"; then
+    WriteLog "Wrote NDJSON to $ARLog" INFO
+  else
+    WriteLog "Primary write FAILED to $ARLog" WARN
+    if mv -f "$TMP_AR" "$ARLog.new"; then
+      WriteLog "Wrote NDJSON to $ARLog.new (fallback)" WARN
+    else
+      keep="/tmp/active-responses.$$.ndjson"
+      cp -f "$TMP_AR" "$keep" 2>/dev/null || true
+      WriteLog "Failed to write both $ARLog and $ARLog.new; saved $keep" ERROR
+      rm -f "$TMP_AR" 2>/dev/null || true
+      exit 1
+    fi
   fi
+  for p in "$ARLog" "$ARLog.new"; do
+    if [ -f "$p" ]; then
+      sz=$(wc -c < "$p" 2>/dev/null || echo 0)
+      ino=$(ls -li "$p" 2>/dev/null | awk '{print $1}')
+      head1=$(head -n1 "$p" 2>/dev/null || true)
+      WriteLog "VERIFY: path=$p inode=$ino size=${sz}B first_line=${head1:-<empty>}" INFO
+    fi
+  done
+}
 
-  status=$(ufw status verbose 2>/dev/null || true)
+RotateLog
+WriteLog "=== SCRIPT START : $ScriptName (host=$HostName) ==="
+BeginNDJSON
 
+if command -v ufw >/dev/null 2>&1; then
+  status="$(ufw status verbose 2>/dev/null || true)"
   case "$status" in
     *inactive*) enabled=false ;;
     *active*)   enabled=true ;;
+    *)          enabled=false ;;
   esac
-
-  if echo "$status" | grep -qi "Logging: on"; then
+  if printf '%s\n' "$status" | grep -qi "Logging: on"; then
     logging=true
+  else
+    logging=false
   fi
-  printf '{"profile":"ufw","enabled":%s,"logging":%s}' "$enabled" "$logging"
-}
-
-profile_json=$(CheckFirewallStatus)
-
-ts=$(date --iso-8601=seconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z')
-final_json="{\"timestamp\":\"$ts\",\"host\":\"$HostName\",\"action\":\"check_firewall_status\",\"enforced\":[$profile_json],\"copilot_action\":true}"
-
-tmpfile=$(mktemp)
-printf '%s\n' "$final_json" > "$tmpfile"
-if ! mv -f "$tmpfile" "$ARLog" 2>/dev/null; then
-  mv -f "$tmpfile" "$ARLog.new"
+  AddRecord "ufw" "$enabled" "$logging"
+else
+  AddStatus "error" "ufw not installed"
 fi
 
-WriteLog "Firewall status JSON written to $ARLog" INFO
+CommitNDJSON
 dur=$(( $(date +%s) - runStart ))
-WriteLog "=== SCRIPT END : duration ${dur}s ==="
+WriteLog "=== SCRIPT END : ${dur}s ==="
